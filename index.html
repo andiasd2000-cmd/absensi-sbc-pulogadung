@@ -1358,6 +1358,7 @@ P.riwayatAdmin=function(m){
       api('home').then(function(d){ S.home=d; S.user=d.user; applyTheme(d.theme); refreshNav(); enterApp(); })
         .catch(function(){ resetSession(); showAuth(); });
     });
+  
 })();
 })();
 </script>

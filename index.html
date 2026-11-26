@@ -704,11 +704,14 @@ P.account=function(m){
 };
 
 /* ------------------------------ IZIN (karyawan) ------------------------------ */
+function absenLabel(a){ return a==='Masuk'?'Clock In':a==='Pulang'?'Clock Out':'Clock In & Clock Out'; }
+function izinLabel(r){ return r.jenis==='Lainnya'?'Izin Lainnya ('+absenLabel(r.absen)+')':r.jenis; }
 P.izin=function(m){
   var pg=page(m,'Izin / Cuti','Ajukan izin, sakit, atau cuti');
   var t=todayStr();
   pg.innerHTML=
     '<label for="iJenis">Jenis</label><select id="iJenis"><option>Izin</option><option>Sakit</option><option>Cuti</option><option value="Lainnya">Lainnya (isi keterangan)</option></select>'+
+    '<div id="iAbsenBox" style="display:none"><label for="iAbsen">Catat sebagai</label><select id="iAbsen"><option value="Masuk">Clock In</option><option value="Pulang">Clock Out</option></select></div>'+
     '<p class="sub" id="iInfo" style="margin-top:6px"></p>'+
     '<div class="row2"><div><label for="iMulai">Mulai</label><input type="date" id="iMulai" value="'+t+'"></div><div><label for="iSelesai">Selesai</label><input type="date" id="iSelesai" value="'+t+'"></div></div>'+
     '<label for="iAlasan" id="iAlasanL">Alasan</label><textarea id="iAlasan" maxlength="500" placeholder="Tuliskan alasan singkat"></textarea>'+
@@ -716,23 +719,24 @@ P.izin=function(m){
     '<div class="sec"><b>Pengajuan Saya</b></div><div class="list" id="list">'+LOADING+'</div>';
   function draw(rows){
     $('list').innerHTML=rows.map(function(r){
-      return '<div class="row"><div class="l"><b>'+esc(r.jenis==='Lainnya'?'Izin Lainnya':r.jenis)+' · '+esc(fmtD(r.mulai))+(r.selesai!==r.mulai?' – '+esc(fmtD(r.selesai)):'')+'</b><span>'+esc(r.alasan)+(r.catatan?' · Catatan admin: '+esc(r.catatan):'')+'</span></div>'+
+      return '<div class="row"><div class="l"><b>'+esc(izinLabel(r))+' · '+esc(fmtD(r.mulai))+(r.selesai!==r.mulai?' – '+esc(fmtD(r.selesai)):'')+'</b><span>'+esc(r.alasan)+(r.catatan?' · Catatan admin: '+esc(r.catatan):'')+'</span></div>'+
         '<div class="r">'+statusPill(r.status)+(r.status==='Menunggu'?'<br><a href="#" data-cancel="'+esc(r.id)+'" style="font-size:12px">Batalkan</a>':'')+'</div></div>';
     }).join('')||empty('Belum ada pengajuan.');
   }
   function jenisInfo(){
-    var lain=$('iJenis').value==='Lainnya';
+    var lain=$('iJenis').value==='Lainnya', isIn=$('iAbsen').value==='Masuk';
+    $('iAbsenBox').style.display=lain?'':'none';
     $('iAlasanL').textContent=lain?'Keterangan (wajib)':'Alasan';
     $('iAlasan').placeholder=lain?'mis. Dinas luar ke kantor pusat, pelatihan, kunjungan klien…':'Tuliskan alasan singkat';
-    $('iInfo').textContent=lain?'Jika disetujui admin, Clock In & Clock Out otomatis tercatat TEPAT WAKTU sesuai jam kerja di setiap hari kerja pada rentang tanggal ini.'
+    $('iInfo').textContent=lain?'Jika disetujui admin, '+(isIn?'Clock In':'Clock Out')+' otomatis tercatat sesuai jam '+(isIn?'masuk':'pulang')+' kerja di setiap hari kerja pada rentang tanggal ini. '+(isIn?'Clock Out tetap dilakukan sendiri.':'Clock In tetap dilakukan sendiri.')
       :'Jika disetujui, Anda tidak perlu absen pada hari tersebut dan poin tidak dikurangi.';
   }
-  $('iJenis').onchange=jenisInfo; jenisInfo();
+  $('iJenis').onchange=jenisInfo; $('iAbsen').onchange=jenisInfo; jenisInfo();
   api('izinMine').then(draw).catch(function(e){ $('list').innerHTML=msgHtml('err',e.message); });
   $('list').onclick=function(e){ var a=e.target.closest('[data-cancel]'); if(!a) return; e.preventDefault(); a.textContent='…'; api('izinCancel',{id:a.dataset.cancel}).then(draw).catch(function(er){ toast(er.message,'err'); }); };
   $('iKirim').onclick=function(){
     var b=this; busy(b,true); setMsg('iMsg');
-    api('izinCreate',{jenis:$('iJenis').value,mulai:$('iMulai').value,selesai:$('iSelesai').value,alasan:$('iAlasan').value})
+    api('izinCreate',{jenis:$('iJenis').value,absen:$('iJenis').value==='Lainnya'?$('iAbsen').value:'',mulai:$('iMulai').value,selesai:$('iSelesai').value,alasan:$('iAlasan').value})
       .then(function(rows){ draw(rows); $('iAlasan').value=''; setMsg('iMsg','ok','Pengajuan terkirim, menunggu persetujuan admin.'); })
       .catch(function(e){ setMsg('iMsg','err',e.message); }).then(function(){ busy(b,false); });
   };
@@ -808,8 +812,8 @@ P.izinAdmin=function(m){
     $('list').innerHTML=rows.map(function(r){
       return '<div class="ann" style="border-left-color:'+(r.status==='Menunggu'?'#e9c34c':r.status==='Disetujui'?'#22c55e':'#ef4444')+'"><div style="flex:1;min-width:0">'+
         '<div style="display:flex;justify-content:space-between;gap:8px"><b>'+esc(r.nama)+'</b>'+statusPill(r.status)+'</div>'+
-        '<p><b>'+esc(r.jenis==='Lainnya'?'Izin Lainnya':r.jenis)+'</b> · '+esc(fmtD(r.mulai))+(r.selesai!==r.mulai?' – '+esc(fmtD(r.selesai)):'')+'</p><p>'+(r.jenis==='Lainnya'?'Keterangan: ':'')+esc(r.alasan)+'</p>'+
-        (r.status==='Menunggu'&&r.jenis==='Lainnya'?'<p class="sub">Jika disetujui: Clock In &amp; Clock Out otomatis tercatat tepat waktu di setiap hari kerja.</p>':'')+
+        '<p><b>'+esc(izinLabel(r))+'</b> · '+esc(fmtD(r.mulai))+(r.selesai!==r.mulai?' – '+esc(fmtD(r.selesai)):'')+'</p><p>'+(r.jenis==='Lainnya'?'Keterangan: ':'')+esc(r.alasan)+'</p>'+
+        (r.status==='Menunggu'&&r.jenis==='Lainnya'?'<p class="sub">Jika disetujui: '+esc(absenLabel(r.absen))+' otomatis tercatat sesuai jam kerja di setiap hari kerja.</p>':'')+
         '<small>Diajukan '+esc(r.diajukan)+(r.oleh?' · diproses '+esc(r.oleh):'')+(r.catatan?' · '+esc(r.catatan):'')+'</small>'+
         (r.status==='Menunggu'?'<input data-note="'+esc(r.id)+'" placeholder="Catatan (opsional)" style="margin-top:8px"><div class="row2" style="margin-top:8px"><button class="btn sm" data-dec="Disetujui" data-id="'+esc(r.id)+'">Setujui</button><button class="btn danger sm" data-dec="Ditolak" data-id="'+esc(r.id)+'">Tolak</button></div>':'')+
         '</div></div>';

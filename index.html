@@ -19,7 +19,6 @@
   <!-- Peta (Leaflet) dimuat otomatis hanya saat peta dibuka, agar aplikasi ringan -->
 
 
-  
   <style>
     :root{
       --p:#2a3f9e; --d:#1e3a8a; --g:#7d7050;
@@ -379,7 +378,9 @@ var ICONS={
   history:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l4 2"/>',
   login:'<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5M15 12H3"/>',
   logout:'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5M21 12H9"/>',
-  back:'<path d="m15 18-6-6 6-6"/>'
+  back:'<path d="m15 18-6-6 6-6"/>',
+  clipboard:'<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="m9 13 2 2 4-4"/><path d="M9 18h6"/>',
+  trash:'<path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6"/>'
 };
 function ic(n){ return '<svg class="i" viewBox="0 0 24 24">'+(ICONS[n]||'')+'</svg>'; }
 
@@ -396,7 +397,7 @@ var MENU_LABEL={izin:'Izin / Cuti',leaderboard:'Leaderboard',chat:'Chat Live',ri
 var ADMIN_TILES=[
   ['karyawan','Data Karyawan','users','#34c3b1','#159a8a'],
   ['izinAdmin','Izin/Cuti User','calendar','#fda14b','#f2771c'],
-  ['rekapIzin','Rekap Izin','bar','#2dd4bf','#0d9488'],
+  ['rekapIzin','Rekap Izin','clipboard','#2dd4bf','#0d9488'],
   ['menuUser','Menu User','list','#34c3b1','#159a8a'],
   ['jamKerja','Jam Kerja','clock','#3b4fb8','#1e2f80'],
   ['geo','Geofencing','pin','#f56b79','#df3d51'],
@@ -409,7 +410,8 @@ var ADMIN_TILES=[
   ['poin','Poin Leaderboard','star','#e9c34c','#c99a1e'],
   ['rekap','Rekap & Ekspor','download','#4cc7f7','#0ea5e9'],
   ['chat','Chat Live','chat','#7c8af7','#4f5fe6'],
-  ['riwayatAdmin','Riwayat Absen','history','#9aa1b3','#6b7280']
+  ['riwayatAdmin','Riwayat Absen','history','#9aa1b3','#6b7280'],
+  ['hapusData','Hapus Data','trash','#f87171','#dc2626']
 ];
 var USER_TILES=[
   ['izin','Izin/Cuti','calendar','#fda14b','#f2771c','izin'],
@@ -915,7 +917,10 @@ P.izin=function(m){
     var mon=$('iMon').value||curMonth();
     var inMon=mine.filter(function(r){ return String(r.mulai).slice(0,7)===mon; });
     var ok=inMon.filter(function(r){ return r.status==='Disetujui'; });
-    var hari=ok.reduce(function(a,r){ return a+(+r.hari||0); },0);
+    // hari = tanggal unik (izin Clock In + Clock Out di tanggal yang sama dihitung 1 hari)
+    var tg={}, extra=0;
+    ok.forEach(function(r){ if(r.tgl&&r.tgl.length) r.tgl.forEach(function(t){ tg[t]=1; }); else extra+=(+r.hari||0); });
+    var hari=Object.keys(tg).length+extra;
     var per={}; ok.forEach(function(r){ var k=izinLabel(r); per[k]=(per[k]||0)+1; });
     $('iSum').innerHTML='<div class="kpi" style="margin-top:0"><div><strong>'+ok.length+'</strong><small>Kali disetujui</small></div><div><strong>'+hari+'</strong><small>Hari kerja</small></div><div><strong>'+inMon.filter(function(r){return r.status==='Menunggu';}).length+'</strong><small>Menunggu</small></div></div>'+
       (ok.length?'<p class="sub">'+Object.keys(per).map(function(k){ return esc(k)+' '+per[k]+'x'; }).join(' · ')+'</p>':'<p class="sub">Belum ada izin/cuti yang disetujui di '+esc(monthLabel(mon))+'.</p>');
@@ -1099,6 +1104,51 @@ P.rekapIzin=function(m){
   };
   $('zGo').onclick=function(){ document.querySelectorAll('#quick button').forEach(function(x){ x.classList.remove('active'); }); run(); };
   run();
+};
+
+/* ---------- Hapus / Reset Data ---------- */
+P.hapusData=function(m){
+  var pg=page(m,'Hapus Data','Reset data lama — otomatis dibuat backup');
+  var r0=monthRange(-1);
+  pg.innerHTML=
+    '<div class="msg info" style="margin-top:0">Data yang dihapus <b>disalin dulu</b> ke file backup Google Sheet di Drive Anda. Akun karyawan, pengaturan, dan hari libur <b>tidak</b> ikut terhapus.</div>'+
+    '<label for="dJ">Data yang dihapus</label><select id="dJ"><option value="absensi">Absensi (Clock In / Clock Out)</option><option value="izin">Izin / Sakit / Cuti / Izin Lainnya</option><option value="chat">Chat</option></select>'+
+    '<label for="dN">Karyawan</label><select id="dN"><option value="">Semua karyawan</option></select>'+
+    '<div class="seg" id="dQ" style="margin-top:14px"><button data-q="-1" class="active">Bulan lalu</button><button data-q="0">Bulan ini</button><button data-q="py">Tahun lalu</button><button data-q="all">Semua tanggal</button></div>'+
+    '<div class="row2"><div><label>Dari</label><input type="date" id="dF" value="'+r0[0]+'"></div><div><label>Sampai</label><input type="date" id="dT" value="'+r0[1]+'"></div></div>'+
+    '<button class="btn ghost" id="dCek">Cek Data yang Akan Dihapus</button><div id="dOut"></div>';
+  api('usersList').then(function(u){ $('dN').innerHTML+=u.map(function(x){ return '<option value="'+esc(x.nip)+'">'+esc(x.nama)+' ('+esc(x.nip)+')</option>'; }).join(''); }).catch(function(){});
+  function payload(){ return {jenis:$('dJ').value,nip:$('dN').value,from:$('dF').value,to:$('dT').value}; }
+  function reset(){ $('dOut').innerHTML=''; }
+  ['dJ','dN','dF','dT'].forEach(function(id){ $(id).onchange=reset; });
+  $('dQ').onclick=function(e){
+    var b=e.target.closest('[data-q]'); if(!b) return;
+    this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('active',x===b); });
+    var q=b.dataset.q, r;
+    if(q==='all') r=['2000-01-01','2099-12-31'];
+    else if(q==='py'){ var y=+todayStr().slice(0,4)-1; r=[y+'-01-01',y+'-12-31']; }
+    else r=monthRange(+q);
+    $('dF').value=r[0]; $('dT').value=r[1]; reset();
+  };
+  $('dCek').onclick=function(){
+    var b=this, p=payload(); p.preview=true; busy(b,true); reset();
+    api('dataHapus',p).then(function(d){
+      var who=$('dN').value?$('dN').options[$('dN').selectedIndex].text:'semua karyawan';
+      if(!d.jumlah){ $('dOut').innerHTML=msgHtml('ok','Tidak ada data '+d.jenis+' untuk '+who+' pada periode ini. Tidak ada yang perlu dihapus.'); return; }
+      $('dOut').innerHTML='<div class="msg err">Akan dihapus: <b>'+d.jumlah+' baris</b> '+esc(d.jenis)+'<br>Periode '+esc(fmtD(d.from))+' – '+esc(fmtD(d.to))+' · '+esc(who)+' ('+d.karyawan+' orang)</div>'+
+        ($('dJ').value==='izin'?'<p class="sub" style="margin-top:8px">Catatan: Clock In/Out otomatis dari Izin Lainnya ada di data Absensi, tidak ikut terhapus.</p>':'')+
+        '<label for="dK">Ketik HAPUS untuk konfirmasi</label><input id="dK" autocomplete="off" placeholder="HAPUS">'+
+        '<button class="btn danger" id="dGo" disabled>'+ic('trash')+' Hapus '+d.jumlah+' Baris & Buat Backup</button>';
+      $('dK').oninput=function(){ $('dGo').disabled=this.value.trim().toUpperCase()!=='HAPUS'; };
+      $('dGo').onclick=function(){
+        var g=this, q=payload(); q.konfirmasi=$('dK').value; busy(g,true,'Membuat backup & menghapus…');
+        api('dataHapus',q).then(function(res){
+          S.home=null;
+          $('dOut').innerHTML='<div class="msg ok">'+esc(res.message||'Selesai.')+(res.backupUrl?'<br><a href="'+esc(res.backupUrl)+'" target="_blank" rel="noopener">Buka backup: '+esc(res.backupName)+' ↗</a>':'')+'</div>';
+        }).catch(function(e){ busy(g,false); setMsg('dOut','err',e.message); });
+      };
+    }).catch(function(e){ setMsg('dOut','err',e.message); }).then(function(){ busy(b,false); });
+  };
 };
 
 /* ---------- Menu User ---------- */
@@ -1359,7 +1409,6 @@ P.riwayatAdmin=function(m){
       api('home').then(function(d){ S.home=d; S.user=d.user; applyTheme(d.theme); refreshNav(); enterApp(); })
         .catch(function(){ resetSession(); showAuth(); });
     });
-  
 })();
 })();
 </script>
